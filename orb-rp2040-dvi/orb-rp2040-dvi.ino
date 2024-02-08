@@ -60,6 +60,15 @@ DVIGFX16 display(DVI_RES_320x240p60, pimoroni_demo_hdmi_cfg);
 #include "texture-polar.h"   // Texture map for polar mapping example
 #include "texture-stencil.h" // Texture map for stencil mapping example
 
+// RP2040-SPECIFIC OPTIMIZATION: certain const tables in flash are copied
+// to RAM on startup. Off-chip flash access is a bottleneck, but collectively
+// these tables are too large for RAM (especially after the DVI framebuffer
+// stakes its claim). These are prioritized by use and available space.
+// Likely no benefit on chips w/onboard flash, just access tables directly.
+uint16_t vecscale_ram[DIAMETER];
+uint16_t height_ram[RADIUS][RADIUS];
+uint16_t arcsin_ram[1 << ARCSIN_BITS];
+
 GFXcanvas1 canvas(48, 7);  // For FPS indicator
 uint32_t   last   = -1000; // "
 uint32_t   frames = 0;     // "
@@ -70,6 +79,11 @@ void setup() {
   if (!display.begin()) { // Fast blink LED if insufficient RAM
     for (;;) digitalWrite(LED_BUILTIN, (millis() / 200) & 1);
   }
+
+  // See note above re: RP2040 optimization
+  memcpy(vecscale_ram, vecscale, sizeof vecscale);
+  memcpy(height_ram, height, sizeof height);
+  memcpy(arcsin_ram, arcsin, sizeof arcsin);
 }
 
 void loop() {
@@ -92,8 +106,8 @@ void loop() {
 
   // Rotation for example purposes is a time-based wobble on X & Y axes
   // and continuous spin on Z axis.
-  float rot[3] = { (float)sin((double)now * 0.0005) * 2,
-                   (float)sin((double)now * 0.0007) * 2,
+  float rot[3] = { (float)sin((double)now * 0.0005) * 2.1,
+                   (float)sin((double)now * 0.0008) * 1.7,
                    (float)((double)now * 0.0011) };
 
   // rot[] above is the sphere's rotation. The image plane is rotated in the
@@ -146,13 +160,13 @@ void loop() {
   for (int y=0; y<DIAMETER; y++) { // For each row...
     // Get position of leftmost "point 0"  for this row, based on rotated
     // upper-left corner of image plane, offset by y vector scaled.
-    rowp0[0] = coord[0][0] + vy[0] * vecscale[y] / 65536; // See prior notes,
-    rowp0[1] = coord[0][1] + vy[1] * vecscale[y] / 65536; // do not "optimize"
-    rowp0[2] = coord[0][2] + vy[2] * vecscale[y] / 65536; // with a >>
+    rowp0[0] = coord[0][0] + vy[0] * vecscale_ram[y] / 65536; // See prior notes,
+    rowp0[1] = coord[0][1] + vy[1] * vecscale_ram[y] / 65536; // do not "optimize"
+    rowp0[2] = coord[0][2] + vy[2] * vecscale_ram[y] / 65536; // with a >>
 
     // Height table covers 1/4 of sphere. Get pointer for current row,
     // mirroring Y axis as needed.
-    const uint16_t *hrow = height[(y < RADIUS) ? y : DIAMETER - 1 - y];
+   uint16_t *hrow = height_ram[(y < RADIUS) ? y : DIAMETER - 1 - y];
 
     // HERE'S WHERE THE CODE DIVERGES for different texturing methods.
     // ONE of these sections should be un-commented at any time.
@@ -175,9 +189,9 @@ void loop() {
       // those pixels (with changes to *ptr handling).
       if (z > 0) {
         // Get pixel's XYZ coordinates on sphere surface
-        int16_t px = rowp0[0] + ((vx[0] * vecscale[x]) + (vz[0] * z)) / 65536;
-        int16_t py = rowp0[1] + ((vx[1] * vecscale[x]) + (vz[1] * z)) / 65536;
-        int16_t pz = rowp0[2] + ((vx[2] * vecscale[x]) + (vz[2] * z)) / 65536;
+        int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
+        int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
+        int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
         px /= 1 << (ARCTAN_BITS - 1);  // Scale ±32K to arctan table size
         py /= 1 << (ARCTAN_BITS - 1);  // "
         uint32_t tx; // Texture X coord
@@ -192,7 +206,7 @@ void loop() {
                            arctan[255 + py][255 - px] + 49152;  // Q4
         }
         tx = tx * TEXTURE_POLAR_WIDTH / 65536;
-        uint16_t ty = arcsin[(pz + 32768UL) >> (16 - ARCSIN_BITS)] *
+        uint16_t ty = arcsin_ram[(pz + 32768UL) >> (16 - ARCSIN_BITS)] *
           TEXTURE_POLAR_HEIGHT / 65536; // Texture Y coord
         // OPTIMIZATION OPPORTUNITY (maybe): rather than arctan and arcsin
         // tables that work in 0-64K space which is then then scaled to
@@ -217,8 +231,8 @@ void loop() {
       uint16_t z = hrow[(x < RADIUS) ? x : (DIAMETER - 1 - x)];
       if (z > 0) {
         // Get pixel's XY coordinates on sphere surface
-        int16_t px = rowp0[0] + ((vx[0] * vecscale[x]) + (vz[0] * z)) / 65536;
-        int16_t py = rowp0[1] + ((vx[1] * vecscale[x]) + (vz[1] * z)) / 65536;
+        int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
+        int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
         // OPTIMIZATION OPPORTUNITY: if texture dimensions are limited to
         // powers of two, tx,ty could be done with simpler shift-right ops.
         uint16_t tx = TEXTURE_STENCIL_WIDTH * (px + 32768UL) / 65536;
@@ -238,7 +252,7 @@ void loop() {
       uint16_t z = hrow[(x < RADIUS) ? x : (DIAMETER - 1 - x)];
       if (z > 0) {
         // Get pixel's Z coordinate on sphere surface
-        int16_t pz = rowp0[2] + ((vx[2] * vecscale[x]) + (vz[2] * z)) / 65536;
+        int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
         color = pz & 0x1000 ? 0xF800 : 0x001F; // Z axis stripes
         // Stripes are uniformly Z-spaced. If uniform polar spacing is
         // desired, incorporate arcsin usage as in first example.
