@@ -86,7 +86,8 @@ void setup() {
   memcpy(arcsin_ram, arcsin, sizeof arcsin);
 }
 
-void loop() {
+// RP2040-SPECIFIC OPTIMIZATION: rendering loop runs from RAM.
+void __not_in_flash_func(loop)() {
   uint32_t now = millis();
   digitalWrite(LED_BUILTIN, (now / 500) & 1); // Heartbeat
 
