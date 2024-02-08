@@ -66,7 +66,7 @@ DVIGFX16 display(DVI_RES_320x240p60, pimoroni_demo_hdmi_cfg);
 // stakes its claim). These are prioritized by use and available space.
 // Likely no benefit on chips w/onboard flash, just access tables directly.
 uint16_t vecscale_ram[DIAMETER];
-uint16_t height_ram[RADIUS][RADIUS];
+uint16_t height_ram[HEIGHT_TABLE_SIZE];
 uint16_t arcsin_ram[1 << ARCSIN_BITS];
 
 GFXcanvas1 canvas(48, 7);  // For FPS indicator
@@ -106,8 +106,8 @@ void loop() {
 
   // Rotation for example purposes is a time-based wobble on X & Y axes
   // and continuous spin on Z axis.
-  float rot[3] = { (float)sin((double)now * 0.0005) * 2.1,
-                   (float)sin((double)now * 0.0008) * 1.7,
+  float rot[3] = { (float)(sin((double)now * 0.0005) * 2.1),
+                   (float)((1 - sin((double)now * 0.0008)) * 1.7),
                    (float)((double)now * 0.0011) };
 
   // rot[] above is the sphere's rotation. The image plane is rotated in the
@@ -146,27 +146,39 @@ void loop() {
                     coord[2][2] - coord[0][2] };
   int32_t vz[3] = { coord[3][0], coord[3][1], coord[3][2] };
 
-  // Get pointer to first pixel in bounding square of sphere
-  uint16_t *ptr = display.getBuffer() + (display.width() - DIAMETER) / 2;
-
-  int32_t   rowp0[3]; // Leftmost point of image plane for current row
-  uint16_t  color;    // RGB565 pixel color
+  int32_t rowp0[3]; // Leftmost point of image plane for current row
 
   // OPTIMIZATION OPPORTUNITY: some texture modes add a fixed offset to a
   // pixels X/Y/Z coordinates (e.g. to translate ±32K coords to 0-64K).
   // In certain situations those offsets could be added once here to
   // coord[0], eliminating some per-pixel math.
 
-  for (int y=0; y<DIAMETER; y++) { // For each row...
+  for (uint16_t y=0; y<DIAMETER; y++) { // For each row...
+    uint16_t *ptr = display.getBuffer() + y * display.width() +
+                    (display.width() - DIAMETER) / 2; // -> column 1 in rect
+    uint16_t *hptr;                                   // -> to height table
+    uint16_t x;                                       // Current column
+
+    // Height table covers half of sphere; lower half is mirrored. If space
+    // is precious, could use a 1/4 sphere table (with adjustments to the
+    // table-generating code, and by adding mirroring in the X loops), at the
+    // expense of some extra cycles. The height table is a sparse array, so
+    // a lookup is needed to find row start. From there it just increments.
+    if (y < RADIUS) {
+      x    = x1[y];                      // First column for row
+      hptr = &height_ram[height_idx[y]]; // First height for row
+    } else {
+      x    = x1[DIAMETER - 1 - y];
+      hptr = &height_ram[height_idx[DIAMETER - 1 - y]];
+    }
+    ptr += x; // Increment to sphere's first pixel for this row
+    uint16_t x2 = DIAMETER - 1 - x; // Last column
+
     // Get position of leftmost "point 0"  for this row, based on rotated
     // upper-left corner of image plane, offset by y vector scaled.
-    rowp0[0] = coord[0][0] + vy[0] * vecscale_ram[y] / 65536; // See prior notes,
-    rowp0[1] = coord[0][1] + vy[1] * vecscale_ram[y] / 65536; // do not "optimize"
+    rowp0[0] = coord[0][0] + vy[0] * vecscale_ram[y] / 65536; // See notes, do
+    rowp0[1] = coord[0][1] + vy[1] * vecscale_ram[y] / 65536; // not "optimize"
     rowp0[2] = coord[0][2] + vy[2] * vecscale_ram[y] / 65536; // with a >>
-
-    // Height table covers 1/4 of sphere. Get pointer for current row,
-    // mirroring Y axis as needed.
-   uint16_t *hrow = height_ram[(y < RADIUS) ? y : DIAMETER - 1 - y];
 
     // HERE'S WHERE THE CODE DIVERGES for different texturing methods.
     // ONE of these sections should be un-commented at any time.
@@ -174,50 +186,38 @@ void loop() {
 #if 1
     // Polar mapping with arbitrary texture scale. Probably the most intuitive
     // of the mapping modes presented here, but also most demanding, thus
-    // lowest frame rate. With additional code (not present here), this could
-    // allow dynamic loading of textures.
-    for (int x=0; x<DIAMETER; x++) { // For each column...
-      color = 0;
-      // OPTIMIZATION OPPORTUNITY: This operation to horizontally mirror the
-      // height table could be eliminated by extending the table width to the
-      // full width of the sphere (but would require 2X the space). The same
-      // is NOT true of the vertical axis, a simple per-scanline operation.
-      uint16_t z = hrow[(x < RADIUS) ? x : (DIAMETER - 1 - x)];
-      // OPTIMIZATION OPPORTUNITY: because the set of pixels drawn does not
-      // change frame to frame, this z>0 check could be eliminated with a
-      // table containing the first and last pixel per row, then drawing only
-      // those pixels (with changes to *ptr handling).
-      if (z > 0) {
-        // Get pixel's XYZ coordinates on sphere surface
-        int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
-        int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
-        int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
-        px /= 1 << (ARCTAN_BITS - 1);  // Scale ±32K to arctan table size
-        py /= 1 << (ARCTAN_BITS - 1);  // "
-        uint32_t tx; // Texture X coord
-        // OPTIMIZATION OPPORTUNITY: these tests and some math could be
-        // eliminated using a full-circle rather than single-quadrant arctan
-        // table. Would be massive though, 512KB.
-        if (py >= 0) {
-          tx = (px >= 0) ? arctan[255 - px][255 - py] :         // Quadrant 1
-                           arctan[255 - py][255 + px] + 16384;  // Q2
-        } else {
-          tx = (px < 0) ?  arctan[255 + px][255 + py] + 32768 : // Q3
-                           arctan[255 + py][255 - px] + 49152;  // Q4
-        }
-        tx = tx * TEXTURE_POLAR_WIDTH / 65536;
-        uint16_t ty = arcsin_ram[(pz + 32768UL) >> (16 - ARCSIN_BITS)] *
-          TEXTURE_POLAR_HEIGHT / 65536; // Texture Y coord
-        // OPTIMIZATION OPPORTUNITY (maybe): rather than arctan and arcsin
-        // tables that work in 0-64K space which is then then scaled to
-        // texture dimensions, those tables could be pre-scaled to pixel
-        // coordinates. This would lose the flexibility of arbitrary texture
-        // sizes (e.g. if implementing runtime texture loading), and in some
-        // cases (if using single-quadrant table) would require the texture
-        // width be a multiple of 4.
-        color = texture_polar[ty][tx];
+    // lowest frame rate. With additional code (not present here) and ample RAM
+    // (also not present), this could allow dynamic loading of textures.
+    for (; x<=x2; x++) { // For each column...
+      uint16_t z = *hptr++;
+      // Get pixel's XYZ coordinates on sphere surface
+      int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
+      int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
+      int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
+      px /= 1 << (ARCTAN_BITS - 1);  // Scale ±32K to arctan table size
+      py /= 1 << (ARCTAN_BITS - 1);  // "
+      uint32_t tx; // Texture X coord
+      // OPTIMIZATION OPPORTUNITY: these tests and some math could be
+      // eliminated using a full-circle rather than single-quadrant arctan
+      // table. Would be massive though, 512KB.
+      if (py >= 0) {
+        tx = (px >= 0) ? arctan[255 - px][255 - py] :         // Quadrant 1
+                         arctan[255 - py][255 + px] + 16384;  // Q2
+      } else {
+        tx = (px < 0) ?  arctan[255 + px][255 + py] + 32768 : // Q3
+                         arctan[255 + py][255 - px] + 49152;  // Q4
       }
-      *ptr++ = color;
+      tx = tx * TEXTURE_POLAR_WIDTH / 65536;
+      uint16_t ty = arcsin_ram[(pz + 32768UL) >> (16 - ARCSIN_BITS)] *
+        TEXTURE_POLAR_HEIGHT / 65536; // Texture Y coord
+      // OPTIMIZATION OPPORTUNITY (maybe): rather than arctan and arcsin
+      // tables that work in 0-64K space which is then then scaled to
+      // texture dimensions, those tables could be pre-scaled to pixel
+      // coordinates. This would lose the flexibility of arbitrary texture
+      // sizes (e.g. if implementing runtime texture loading), and in some
+      // cases (if using single-quadrant table) would require the texture
+      // width be a multiple of 4.
+      *ptr++ = texture_polar[ty][tx];
     }
 #endif
 
@@ -225,48 +225,36 @@ void loop() {
     // Stencil mapping -- texture goes completely through the sphere, same on
     // front and back (mirrored). Interesting bit here is that math for only
     // two axes is needed, saving some cycles, yet curvature still happens.
-    for (int x=0; x<DIAMETER; x++) { // For each column...
-      color = 0;
-      // See notes above re: horizontal mirroring optimization.
-      uint16_t z = hrow[(x < RADIUS) ? x : (DIAMETER - 1 - x)];
-      if (z > 0) {
-        // Get pixel's XY coordinates on sphere surface
-        int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
-        int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
-        // OPTIMIZATION OPPORTUNITY: if texture dimensions are limited to
-        // powers of two, tx,ty could be done with simpler shift-right ops.
-        uint16_t tx = TEXTURE_STENCIL_WIDTH * (px + 32768UL) / 65536;
-        uint16_t ty = TEXTURE_STENCIL_HEIGHT * (32767UL - py) / 65536;
-        color = texture_stencil[ty][tx];
-      }
-      *ptr++ = color;
+    for (; x<=x2; x++) { // For each column...
+      uint16_t z = *hptr++;
+      // Get pixel's XY coordinates on sphere surface
+      int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
+      int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
+      // OPTIMIZATION OPPORTUNITY: if texture dimensions are limited to
+      // powers of two, tx,ty could be done with simpler shift-right ops.
+      uint16_t tx = TEXTURE_STENCIL_WIDTH * (px + 32768UL) / 65536;
+      uint16_t ty = TEXTURE_STENCIL_HEIGHT * (32767UL - py) / 65536;
+      *ptr++ = texture_stencil[ty][tx];
     }
 #endif
 
 #if 0
     // Single-axis mapping. May or may not be useful for anything, but shows
     // how even less vector math is needed. Still curved!
-    for (int x=0; x<DIAMETER; x++) { // For each column...
-      color = 0;
-      // See notes above re: horizontal mirroring optimization.
-      uint16_t z = hrow[(x < RADIUS) ? x : (DIAMETER - 1 - x)];
-      if (z > 0) {
-        // Get pixel's Z coordinate on sphere surface
-        int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
-        color = pz & 0x1000 ? 0xF800 : 0x001F; // Z axis stripes
-        // Stripes are uniformly Z-spaced. If uniform polar spacing is
-        // desired, incorporate arcsin usage as in first example.
-      }
-      *ptr++ = color;
+    for (; x<=x2; x++) { // For each column...
+      uint16_t z = *hptr++;
+      // Get pixel's Z coordinate on sphere surface
+      int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
+      *ptr++ = pz & 0x1000 ? 0xF800 : 0x001F; // Z axis stripes
+      // Stripes are uniformly Z-spaced. If uniform polar spacing is
+      // desired, incorporate arcsin usage as in first example.
     }
 #endif
-
-    ptr += (display.width() - DIAMETER); // Advance to start of next line
   }
 
   frames++;
   if ((now - last) >= 1000) { // Show approximate frame rate
-    fps    = (fps * 7 + frames) / 8;
+    fps    = (fps * 7 + frames + 3) / 8;
     frames = 0;
     last   = now;
     canvas.fillScreen(0);
