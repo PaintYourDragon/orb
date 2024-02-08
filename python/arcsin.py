@@ -14,5 +14,5 @@ size = 1 << bits
 print("#define ARCSIN_BITS", bits)
 print("const uint16_t arcsin[1 << ARCSIN_BITS] = {")
 for i in range(size):
-    print(int((asin(i / size * 2 - 1) / pi + 0.5) * 65536), ",", end="")
+    print(int((0.5 - asin((i + 1) / size * 2 - 1) / pi) * 65536), ",", end="")
 print("};")

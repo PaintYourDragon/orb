@@ -18,6 +18,6 @@ print("const uint16_t arctan[1 << ARCTAN_BITS][1 << ARCTAN_BITS] = {")
 for y in range(size):
     dy = size - y - 0.5
     for x in range(size):
-        dx = size - x - 0.5
-        print(int(math.atan2(dy, dx) / (math.pi / 2) * 16384), ",", end="")
+        dx = x + 0.5 - size # size - x - 0.5
+        print(int((math.atan2(dy, dx) / (math.pi / 2) - 1) * 16384), ",", end="")
 print("};")
