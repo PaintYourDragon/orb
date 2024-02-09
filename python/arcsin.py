@@ -2,9 +2,10 @@
 # to polar latitude values in the range 0 to 65535.
 # Run with: python arcsin.py | clang-format > arcsin.h
 # Table size can be adjusted to balance size vs precision; the default 14
-# used here is adequate for the RP2040 sphere demos. There's a minor
-# optimization opportunity (1 shift per pixel) if one uses the max 16 bit
-# resolution here, but the table will use much more space (128 KB).
+# bits used here (16384 entries) is adequate for the RP2040 sphere demos.
+# There's a minor optimization opportunity (1 shift per pixel) if one uses
+# the max 16 bit resolution here, but the table will use much more space
+# (128 KB vs 32 KB at present).
 
 from math import asin, pi
 

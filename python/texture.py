@@ -1,7 +1,9 @@
 # Convert RGB color image to 2D C array of RGB565 colors.
 # Run with: python texture.py imagefile | clang-format > texture.h
-# where imagefile is typically PNG or JPEG, then edit the TEXTURE_WIDTH and
-# TEXTURE_HEIGHT names in the output file to match the C code's expectations.
+# where imagefile is typically PNG or JPEG, then edit the texture,
+# TEXTURE_WIDTH and TEXTURE_HEIGHT names in the output file to match
+# the C code's expectations. Textures can be arbitrary dimensions,
+# no need for squares, 2:1 rects or powers of two.
 
 import sys
 from PIL import Image

@@ -38,10 +38,10 @@ the sign of the input, often just 1 cycle.
 
 #include <PicoDVI.h> // Display & graphics library
 
-// Using Pimoroni Pimoroni Pico DV Demo Base, see PicoDVI lib "16bit_hello"
-// example for other boards (e.g. Adafruit Feather DVI). 16-bit (RGB565)
-// color, single-buffered -- not enough RAM on RP2040 for double buffering,
-// may experience some "tearing" -- or modify texture loop for 8-bit color).
+// Using Pimoroni Pico DV Demo Base, see PicoDVI lib "16bit_hello" example for
+// other boards (e.g. Adafruit Feather DVI). 16-bit (RGB565) color, single-
+// buffered -- not enough RAM on RP2040 for double buffering, may experience
+// some "tearing" -- or modify texture loop for 8-bit color).
 DVIGFX16 display(DVI_RES_320x240p60, pimoroni_demo_hdmi_cfg);
 
 // RADIUS must be #defined before #including various headers. It can NOT be
@@ -64,7 +64,10 @@ DVIGFX16 display(DVI_RES_320x240p60, pimoroni_demo_hdmi_cfg);
 // to RAM on startup. Off-chip flash access is a bottleneck, but collectively
 // these tables are too large for RAM (especially after the DVI framebuffer
 // stakes its claim). These are prioritized by use and available space.
-// Likely no benefit on chips w/onboard flash, just access tables directly.
+// Likely no benefit if porting to chips w/onboard flash, just access tables
+// directly. (This does botch the "unused variables" thing mentioned above,
+// since all of these are referenced in setup(). If paring down the project
+// size, that part of the code will need modification.)
 uint16_t vecscale_ram[DIAMETER];
 uint16_t height_ram[HEIGHT_TABLE_SIZE];
 uint16_t arcsin_ram[1 << ARCSIN_BITS];

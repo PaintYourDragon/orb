@@ -1,5 +1,11 @@
 # Generate 2D array of 16-bit height fields for 1/2 of sphere.
 # Run with: python height.py | clang-format > height.h
+# Only 1/2 sphere is needed, values are mirrored for the lower half.
+# Could even do 1/4 sphere, adding left/right mirroring in the C code,
+# but the larger full-width table saves some inner-loop cycles there.
+# Additionally, this is a sparse array. Only those points inside the
+# sphere need representing. Corners contribute nothing and the C code
+# skips over those pixels.
 
 radius = 120  # This and RADIUS in C code must match
 diameter = radius * 2
