@@ -5,7 +5,7 @@ https://github.com/PaintYourDragon/orb/assets/887611/1b244efa-a6fc-4bed-bc4e-61f
 
 _240 px diameter sphere running on one core of RP2040 overclocked to 252 MHz (while other core is generating DVI video)._
 
-**TL;DR not ray tracing.** The math started there, but by eliminating most generalizations and reducing to a single special case, the result is visually and numerically comparable, with an inner loop that’s 100% integer math.
+**TL;DR not ray tracing.** The math started there, but by eliminating most generalizations and reducing to a single special case, the result is visually and numerically comparable, with an inner loop that’s 100% integer math. There’s some pre-compiled, drag-and-drop .UF2 files for a few boards in the **uf2** folder.
 
 Likely portable to other 32-bit MCUs (ESP32, SAMD51, etc.), sans DVI video.
 
@@ -39,3 +39,7 @@ There’s a whole genre of engineering jokes of the punchline, “First, we assu
 <TR><TD> <IMG SRC="https://github.com/PaintYourDragon/orb/assets/887611/5e4133cf-e8e3-4a52-ba13-a16d09d6ca3c"/></TD>
 <TD>Eyes aren’t actually spheres. They’re <I>oblate spheroids</I> with a <I>corneal bulge.</I> The iris is a whole weird internal thing. But often spheres are <I>good enough…</I>this is for frivolous Halloween stuff, that sort of thing. Spheres can also be reasonable approximations of planets or sportsballs.</TD></TR>
 </table>
+
+Further, there’s only ever this _single_ sphere. It’s _always centered on the origin_ (0,0,0), and it’s a _unit sphere:_ the radius is 1.0. The latter means that in the [line-sphere intersection calculation](https://en.wikipedia.org/wiki/Line–sphere_intersection), any _r_ or _r<sup>2</sup>_ can be replaced with 1, and the former can simplify or eliminate other terms.
+
+## (Work in progress, will continue)
