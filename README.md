@@ -19,7 +19,7 @@ My personal _Whip It_ is animated eyeballs. It’s been an evolutionary series o
 
 _Eyeballs on Adafruit Monster M4SK. Image credit: Adafruit_
 
-Excepting Raspberry Pi (using OpenGL), all the prior microcontroller-based iterations really just created the _illusion_ of a rotating eyeball using 2D blitting or displacement tricks. This limited the range of motion, but revolving in 3D was surely beyond these chips’ capacity. The peculiar mix of strengths and constraints of the RP2040 had me re-evaluating this assumption. “Solving the sphere problem” has been on my code bucket list for a while, and I was in the mood for a demoscene-style flex.
+Excepting Raspberry Pi (using OpenGL), all the prior microcontroller-based iterations really just created the _illusion_ of a rotating eyeball using 2D blitting or bitmap displacement tricks. This limited the range of motion, but revolving in 3D was surely beyond these chips’ capacity. Additionally, each new chip, each new and higher-resolution screen involved a _different_ approach, new tables, new incompatible code. The peculiar mix of strengths and constraints of the RP2040 had me re-considering what’s possible. “Solving the sphere problem” has been on my code bucket list for a while, and I was in the mood for a demoscene-style flex.
 
 The pixel-perfect gold standard would be _ray tracing._ But ray tracing is mathematically _expensive…_ too much for current microcontrollers, even those with floating-point hardware.
 
@@ -27,8 +27,13 @@ The pixel-perfect gold standard would be _ray tracing._ But ray tracing is mathe
 
 _Image credit: Henrik, Wikimedia Commons_
 
-What makes this project work is that it doesn’t actually _require_ a fully generalized ray tracer. There’s just a single object, pivoting in place but otherwise remaining in the same location on screen. A series of assumptions can be made, each stripping away elements of the ray tracing equation, until eventually there’s no ray tracing left at all.
+What makes this project work is that it doesn’t actually _require_ a fully generalized ray tracer. It’s just a single object, pivoting in place but otherwise remaining in the same location on screen. A series of assumptions can be made, each stripping away elements of the ray tracing equation, until eventually there’s no ray tracing left at all.
 
 ## Assumptions
 
 There’s a whole genre of engineering jokes of the punchline, “First, we assume each (cow, racehorse, etc.) is a perfect sphere in a vacuum…”
+
+First, we assume eyes are spheres.
+
+| - | - |
+| ![vintage-eye](https://github.com/PaintYourDragon/orb/assets/887611/5e4133cf-e8e3-4a52-ba13-a16d09d6ca3c) | Eyes aren’t actually spheres. They’re _oblate spheroids_ with a _corneal bulge._ The iris is a whole weird internal thing. But often spheres are good enough…this is, like, for Halloween stuff. Spheres can also be reasonable approximations of planets or sportsballs. |
