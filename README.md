@@ -42,4 +42,10 @@ There’s a whole genre of engineering jokes of the punchline, “First, we assu
 
 Further, there’s only ever this _single_ sphere. It’s _always centered on the origin_ (0,0,0), and it’s a _unit sphere:_ the radius is 1.0. The latter means that in the [line-sphere intersection calculation](https://en.wikipedia.org/wiki/Line–sphere_intersection), any _r_ or _r<sup>2</sup>_ can be replaced with 1, and the former can simplify or eliminate other terms.
 
+<table>
+<TR><TD> <IMG WIDTH="1024" SRC="https://github.com/PaintYourDragon/orb/assets/887611/cadf311f-c8bb-4966-9111-c0fb84df1966")/></TD>
+<TD>
+What saves most of the work and makes this whole project possible is that with a fixed-size, fixed-position sphere, no matter how much it revolves, <i>the set of pixels to be drawn is unchanged frame-to-frame.</i> As long as <i>only</i> those pixels are visited, no basic intersection test is needed. What’s more, the costly square root calculation that would be part of the intersection test is <i>also</i> unchanged per pixel. All these figures can be calculated once and saved in a table (tables must be minimised on RP2040, but this is the place to splurge). Extra bonus cake: such table only needs to cover 1/4 of the sphere (or even 1/8 with some extra math), and can be reflected for the other quadrants.</TD></TR>
+</table>
+
 ## (Work in progress, will continue)
