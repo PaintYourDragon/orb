@@ -33,7 +33,9 @@ What makes this project work is that it doesn’t actually _require_ a fully gen
 
 There’s a whole genre of engineering jokes of the punchline, “First, we assume each (cow, racehorse, etc.) is a perfect sphere in a vacuum…”
 
-First, we assume eyes are spheres.
+**First, we assume eyes are perfect spheres.**
 
-| - | - |
-| ![vintage-eye](https://github.com/PaintYourDragon/orb/assets/887611/5e4133cf-e8e3-4a52-ba13-a16d09d6ca3c) | Eyes aren’t actually spheres. They’re _oblate spheroids_ with a _corneal bulge._ The iris is a whole weird internal thing. But often spheres are good enough…this is, like, for Halloween stuff. Spheres can also be reasonable approximations of planets or sportsballs. |
+<table>
+<TR><TD> <IMG SRC="https://github.com/PaintYourDragon/orb/assets/887611/5e4133cf-e8e3-4a52-ba13-a16d09d6ca3c"/></TD>
+<TD>Eyes aren’t actually spheres. They’re <I>oblate spheroids</I> with a <I>corneal bulge.</I> The iris is a whole weird internal thing. But often spheres are <I>good enough…</I>this is for frivolous Halloween stuff, that sort of thing. Spheres can also be reasonable approximations of planets or sportsballs.</TD></TR>
+</table>
