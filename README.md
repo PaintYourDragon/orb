@@ -80,5 +80,16 @@ Dropping lighting from the equation — just using texture map colors directly �
 <TD>With no lighting — if just texture coordinates are needed — there’s no difference between rotating each intersection point (a lot of multiplication), and rotating the image plane, projecting the height vectors “outward.” It becomes a matter of scaling and summing three vectors, one of which only changes per scanline, reducing the per-pixel math.</TD></TR>
 </table>
 
+## Fixed-Point Math
 
-## (Work in progress, will continue)
+Somewhere up there it was mentioned that the sphere was specifically made a _unit sphere_ — a radius of 1. In doing so, each of the aforementioned intersection points is within the range (-1.0, +1.0). Rather than handling this all with floating-point math, we can speed this along by working with these coordinates in a **signed 16-bit integer space** (-32768 to +32767). Most operations on these numbers execute in just a single CPU cycle, and any small rounding errors are inconsequential when this is filtered down to pixel space (240 px across/down in the RP2040 example). The scaling operation on each axis of each vector is:
+
+``result = input * scale / 65536;``
+
+Where ``input`` is a 16-bit value (signed or unsigned), and ``scale`` is 0 to 65536. The interim result of the multiplication expands into 32-bit space, and the division brings it back down to 16-bit fixed-point units. This only works reliably with scaling down, not up. It is **vitally important** to keep that divide intact and NOT be L33T with a right-shift operation! The compiler, even at a vanilla no-optimization setting, will handle this with an arithmetic shift right instruction that preserves the sign of the input, typically 1 cycle. Division by an arbitrary integer can be an expensive multi-cycle operation, but division by powers-of-two is recognized and automatically handled efficiently.
+
+For each pixel row, 3 such scalings are needed to get an initial (X,Y,Z) of the leftmost pixel. For each column, given the unit-sphere-ness of the situation, the horizontal and depth vector contributions can be merged (it won’t overflow 32-bit space) and only a single divide (shift, really) is needed between them (times three, for X,Y,Z axes):
+
+``result = ((input1 * scale1) + (input2 * scale2)) / 65536;``
+
+I haven’t gone in there and looked at the disassembled result, but this looks like an opportunity for the multiply-accumulate instructions present on some chips, where the multiply and add occur in a single cycle rather than two separate instructions/cycles.
