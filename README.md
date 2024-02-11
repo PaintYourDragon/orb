@@ -9,7 +9,7 @@ _240 px diameter sphere running on one core of RP2040 overclocked to 252 MHz (wh
 
 Likely portable to other 32-bit MCUs (ESP32, SAMD51, etc.), sans DVI video.
 
-## Pondering
+## Pondering Orbs
 
 Every musical act with a breakout hit is cursed to perform that song at every concert forever, else fans will riot. Devo’s _Whip It_, Jean-Michel Jarre’s _Oxygene IV._
 
@@ -49,7 +49,23 @@ Further, there’s only ever this _single_ sphere. It’s _always centered on th
 <table>
 <TR><TD WIDTH="35%" ALIGN="center"> <IMG SRC="https://github.com/PaintYourDragon/orb/assets/887611/cadf311f-c8bb-4966-9111-c0fb84df1966")/></TD>
 <TD>
-What saves most of the work and makes this whole project possible is that with a fixed-size, fixed-position sphere, no matter how much it revolves, <i>the set of pixels to be drawn is unchanged frame-to-frame.</i> As long as <i>only</i> those pixels are visited, no basic intersection test is needed. What’s more, the costly square root calculation that would be part of the intersection test is <i>also</i> unchanged per pixel. All these figures can be calculated once and saved in a table (tables must be minimised on RP2040, but this is the place to splurge). Extra bonus cake: such table only needs to cover 1/4 of the sphere (or even 1/8 with some extra math), and can be reflected for the other quadrants.</TD></TR>
+What saves a great deal of work and makes this whole project possible is that with a fixed-size, fixed-position sphere, no matter how much it revolves, <i>the set of pixels to be drawn is unchanged frame-to-frame.</i> As long as <i>only</i> those pixels are visited, no basic intersection test is needed. What’s more, the costly square root calculation that would be part of the intersection test is <i>also</i> unchanged per pixel. All these figures can be calculated once and saved in a table (tables must be minimised on RP2040, but this is the place to splurge). Extra bonus cake: such table only needs to cover 1/4 of the sphere (or even 1/8 with some extra math), and can be reflected for the other quadrants.</TD></TR>
 </table>
+
+## Still More Assumptions
+
+Next, perspective is dropped from the equation. This might be controversial, but in practice these little graphics projects tend toward displays less than 2 inches across, and if it were a physical thing the distortion due to perspective would be nearly imperceptible. In doing so, there’s no longer a _viewing frustum_ (a pyramid-shaped volume of viewable space), but just a rectangular tube. The camera is essentially at infinity and every ray is parallel, and the image plane can be as far back or far forward as we’d like…even centered on the origin (0,0,0), like the sphere.
+
+![perspective1](https://github.com/PaintYourDragon/orb/assets/887611/1add6889-99de-4307-acb5-683ccb9a47c9)
+
+In doing so, that table of square roots (distances from camera to points on sphere) can be flipped around, now it’s distances from image plane to sphere…
+
+<table>
+<TR><TD WIDTH="35%" ALIGN="center"> <IMG SRC="https://github.com/PaintYourDragon/orb/assets/887611/1f7d566f-d329-4dd7-94b7-b974ca794b05")/></TD>
+<TD>Height fields, basically. Each point in the table is the elevation of a hemisphere above a plane.</TD></TR>
+</table>
+
+So now, looking straight down the Z axis, the X and Y coordinate of each sphere intersection can be inferred directly from screen pixel coordinates, and Z comes from the table. **At this point, it’s no longer ray tracing really,** but a single “solved” image. Ray tracing was helpful for _conceptualizing the problem,_ we are grateful but no longer require its services. With enough constraints and simplifications, the same set of points can be computed with other means.
+
 
 ## (Work in progress, will continue)
