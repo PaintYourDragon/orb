@@ -93,3 +93,11 @@ For each pixel row, 3 such scalings are needed to get an initial (X,Y,Z) of the 
 ``result = ((input1 * scale1) + (input2 * scale2)) / 65536;``
 
 I haven’t gone in there and looked at the disassembled result, but this looks like an opportunity for the multiply-accumulate instructions present on some chips, where the multiply and add occur in a single cycle rather than two separate instructions/cycles.
+
+## Some Texture Map Notes
+
+The default example of the tumbling globe relies on two further table lookups: an arctangent table converts X/Y coordinates to longitudes (texture X coords), and an arcsine table converts Z to latitudes (texture Y coords).
+
+The drawn sphere is 240 pixels across. In order to wrap around the globe without conspicuous texture artifacts, the texture width should be at least 240*π or 754 pixels. The example texture is 800x400 to round up to a simple figure, and to demonstrate that it’s _not_ necessary to use powers of two. But if you want to operate on a powers-of-two constraint, the code could be modified to use a shift or divide and save a few cycles per pixel. I just chose not to. Because _everything_ is always using powers-of-two constraints.
+
+The arcsine thing is to make sure there’s adequate texture resolution at the poles and also to “wrap” the texture intuitively — it works about the way one would expect if you’ve done any 3D rendering. Cartographically it’s a _plate carrée_ projection. If one only needs to revolve this in such a way that the poles aren’t viewed directly but only edge-on, some cycles and texture space could be freed up by eliminating the arcsin lookup and using Z directly (scaled or shifted to the texture resolution). Less intuitive to work with but with benefits in some situations. Cartographically this one’s a _Lambert cylindrical projection._ Not shown in the code, it’s left as an exercise to the reader.
