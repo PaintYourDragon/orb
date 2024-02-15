@@ -67,7 +67,7 @@ In doing so, that table of square roots (distances from camera to points on sphe
 
 So now, looking straight down the Z axis, the X and Y coordinate of each sphere intersection can be inferred directly from screen pixel coordinates, and Z comes from the table. **At this point, it’s no longer ray tracing really,** but a single “solved” image. In hindsight it’s a pretty obvious and minimalist solution. Ray tracing was helpful for _conceptualizing the problem,_ we are grateful but do not actually require its services. With enough constraints and simplifications, the same set of points can be computed by trivial means.
 
-To rotate the sphere, each intersection point(X,Y,Z) could be rotated around the origin to yield a new (X',Y',Z'), from which texture coordinates are derived. A full three-axis rotation involves something like 12 multiplies per pixel, but with further shenanigans the work can be cut roughly in half…
+To rotate the sphere, each intersection point(X,Y,Z) is rotated around the origin to yield a new (X',Y',Z'), from which texture coordinates are derived.
 
 Dropping lighting from the equation — just using texture map colors directly — might also be controversial, but is part of the Last Shenanigan than makes this work.
 
@@ -76,8 +76,6 @@ Dropping lighting from the equation — just using texture map colors directly �
 <TD>When modeling something like eyes, it’s often a good look to put a lens over the screen. This provides some curvature and an implied sense of <i>moisture</i> to the situation…and specular highlights come free, from nature, in realtime.</TD></TR>
 <TR><TD><IMG SRC="https://github.com/PaintYourDragon/orb/assets/887611/9b224fb1-81a0-409b-8d1e-566847cc69ec"/></TD>
 <TD>Another reason one might drop lighting is that if this is a sphere pivoting in-place, and camera and light source are unmoving, shading would be constant frame-to-frame. Pre-rendered shading (using an alpha channel) could be applied to each frame. That’s not done in this code, but might be practically a free upgrade in some recent chips (i.MX, etc.) that have 2D imaging built in. Or it can even be done with a printed acetate over the screen.</TD></TR>
-<TR><TD><IMG SRC="https://github.com/PaintYourDragon/orb/assets/887611/e0b0ef4f-84cf-4b65-8663-147b137f4f06"/></TD>
-<TD>With no lighting — if just texture coordinates are needed — there’s no difference between rotating each intersection point (a lot of multiplication), and rotating the image plane, projecting the height vectors “outward.” It becomes a matter of scaling and summing three vectors, one of which only changes per scanline, reducing the per-pixel math.</TD></TR>
 </table>
 
 ## Fixed-Point Math
@@ -87,12 +85,6 @@ Somewhere up there it was mentioned that the sphere was specifically made a _uni
 ``result = input * scale / 65536;``
 
 Where ``input`` is a 16-bit value (signed or unsigned), and ``scale`` is 0 to 65536. The interim result of the multiplication expands into 32-bit space, and the division brings it back down to 16-bit fixed-point units. This only works reliably with scaling down, not up. It is **vitally important** to keep that divide intact and NOT be L33T with a right-shift operation! The compiler, even at a vanilla no-optimization setting, will handle this with an arithmetic shift right instruction that preserves the sign of the input, typically 1 cycle. Division by an arbitrary integer can be an expensive multi-cycle operation, but division by powers-of-two is recognized and automatically handled efficiently.
-
-For each pixel row, 3 such scalings are needed to get an initial (X,Y,Z) of the leftmost pixel. For each column, given the unit-sphere-ness of the situation, the horizontal and depth vector contributions can be merged (it won’t overflow 32-bit space) and only a single divide (shift, really) is needed between them (times three, for X,Y,Z axes):
-
-``result = ((input1 * scale1) + (input2 * scale2)) / 65536;``
-
-I haven’t gone in there and looked at the disassembled result, but this looks like an opportunity for the multiply-accumulate instructions present on some chips, where the multiply and add occur in a single cycle rather than two separate instructions/cycles.
 
 ## Some Texture Map Notes
 
