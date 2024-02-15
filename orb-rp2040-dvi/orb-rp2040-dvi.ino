@@ -8,32 +8,6 @@ Written here for RP2040 using PicoDVI-Adafruit Fork library (for HDMI out),
 but should be easily adaptable to most 32-bit MCUs & display types.
 
 MIT license, all text here must be included in any redistribution.
-
-The challenge here was quickly finding texture coordinates on a 3D rotated
-sphere. Unlike prior efforts, it's not a 2D displacement trick. Actual 3D.
-This involved first considering the problem from a generalized ray tracing
-approach, then applying incremental constraints -- fixed size, no lighting,
-no perspective -- what remains isn't ray tracing, but a near trivial task.
-The gimmick comes down to not actually rotating the sphere (it stays fixed
-at the origin), instead pivoting the image plane (also centered at origin).
-Advancing through each pixel in the plane is simple linear interpolation,
-and the perpendicular 'height' of the sphere at each pixel comes from a
-table (averting a costly per-pixel square root), yielding (X,Y,Z).
-
-The inner pixel loop involves scaling and adding a set of fixed-point vectors.
-All integer math; multiply, shift, add, some table lookups. No floating-point,
-division, or square roots. The essential scaling operation on each vector is:
-
-    result = input * scale / 65536;
-
-where input is a 16-bit value, signed (-32K to +32K maps to -1.0 to +1.0)
-or unsigned (0 to 64K maps to 0.0 to +1.0), and scale is unsigned (0 to 64K
-maps to 0.0 to +1.0); this scales down, not up. The interim result is 32-bit,
-which the divide then brings back to the original 16-bit coordinate space.
-It is VERY IMPORTANT to keep that divide intact and NOT be L33T with a right-
-shift operation! The compiler, even at a vanilla no-optimization setting,
-will handle this with an arithmetic shift right instruction that preserves
-the sign of the input, often just 1 cycle.
 */
 
 #include <PicoDVI.h> // Display & graphics library
@@ -53,8 +27,8 @@ DVIGFX16 display(DVI_RES_320x240p60, pimoroni_demo_hdmi_cfg);
 // Not every example requires every header, but it's less explanation and
 // de-commenting just to include them all. Won't bloat the executable;
 // compiler's good about not allocating unused variables (including arrays).
-#include "vecscale.h"        // Image plane X/Y vector scaling table
-#include "height.h"          // Sphere height field (Z) table
+#include "pixel_xy.h"        // Pixel cols/rows to XY fixed-point space
+#include "pixel_z.h"         // Pixel cols/rows to Z space
 #include "arctan.h"          // For rectangular to polar conversion
 #include "arcsin.h"          // "
 #include "texture-polar.h"   // Texture map for polar mapping example
@@ -68,8 +42,8 @@ DVIGFX16 display(DVI_RES_320x240p60, pimoroni_demo_hdmi_cfg);
 // directly. (This does botch the "unused variables" thing mentioned above,
 // since all of these are referenced in setup(). If paring down the project
 // size, that part of the code will need modification.)
-uint16_t vecscale_ram[DIAMETER];
-uint16_t height_ram[HEIGHT_TABLE_SIZE];
+int16_t  pixel_xy_ram[DIAMETER];
+int16_t  pixel_z_ram[PIXEL_Z_TABLE_SIZE];
 uint16_t arcsin_ram[1 << ARCSIN_BITS];
 
 GFXcanvas1 canvas(48, 7);  // For FPS indicator
@@ -84,26 +58,15 @@ void setup() {
   }
 
   // See note above re: RP2040 optimization
-  memcpy(vecscale_ram, vecscale, sizeof vecscale);
-  memcpy(height_ram, height, sizeof height);
-  memcpy(arcsin_ram, arcsin, sizeof arcsin);
+  memcpy(pixel_xy_ram, pixel_xy, sizeof pixel_xy);
+  memcpy(pixel_z_ram , pixel_z , sizeof pixel_z);
+  memcpy(arcsin_ram  , arcsin  , sizeof arcsin);
 }
 
 // RP2040-SPECIFIC OPTIMIZATION: rendering loop runs from RAM.
 void __not_in_flash_func(loop)() {
   uint32_t now = millis();
   digitalWrite(LED_BUILTIN, (now / 500) & 1); // Heartbeat
-
-  // Image plane is a unit square centered on origin, plus an "out" facing
-  // vector is needed. Right-handed coordinate space with fixed-point values.
-  // Bounds are intentionally inset ever-so-slightly from the full range to
-  // prevent small but cumulative rounding errors from "wrapping around."
-  int32_t coord[][3] = {      // X,Y,Z
-    { -32766,  32765,     0}, // UL corner of image plane
-    {  32766,  32765,     0}, // UR corner of image plane
-    { -32766, -32765,     0}, // LL corner of image plane
-    {      0,      0, 32765}  // Z vector from origin
-  };
 
   // This next section is the only part involving floating-point math,
   // and occurs just once per frame so it's really not a huge bottleneck.
@@ -114,75 +77,52 @@ void __not_in_flash_func(loop)() {
                    (float)((1 - sin((double)now * 0.0008)) * 1.7),
                    (float)((double)now * 0.0011) };
 
-  // rot[] above is the sphere's rotation. The image plane is rotated in the
-  // opposite direction while the sphere stays put.
+  // rot[] above is the sphere's rotation. Intersection points are
+  // rotated in the opposite direction to yield texture space coords.
   float c[] = { cos(-rot[0]), cos(-rot[1]), cos(-rot[2]) };
   float s[] = { sin(-rot[0]), sin(-rot[1]), sin(-rot[2]) };
 
-  // Each point in the coord[] table (3 corners of image plane + depth
-  // vector) is rotated in floating-point 3space, the final result quantized
-  // back to fixed-point space and stored in the original table. While the
-  // sphere itself neatly fills int16_t space, the corners of the image plane
-  // when rotated will exceed this, hence the int32_t type for those.
-  for (int i=0; i<4; i++) {
-    float x, y, z, zz;
-    // Z rot (X & Y)
-    x = (float)coord[i][0] * c[2] - (float)coord[i][1] * s[2];
-    y = (float)coord[i][0] * s[2] + (float)coord[i][1] * c[2];
-    // Y rot (X & Z)
-    z = x * s[1] + (float)coord[i][2] * c[1];
-    x = x * c[1] - (float)coord[i][2] * s[1];
-    // X rot (Z & Y)
-    zz = z * c[0] - y * s[0];
-    y  = z * s[0] + y * c[0];
-    coord[i][0] = (int32_t)(floor(x + 0.5));
-    coord[i][1] = (int32_t)(floor(y + 0.5));
-    coord[i][2] = (int32_t)(floor(zz + 0.5));
-  }
-
-  // Distances between image plane corners then represent 3D vectors
-  // for incrementing along rows (y) and columns (x) of display.
-  int32_t vx[3] = { coord[1][0] - coord[0][0],
-                    coord[1][1] - coord[0][1],
-                    coord[1][2] - coord[0][2] };
-  int32_t vy[3] = { coord[2][0] - coord[0][0],
-                    coord[2][1] - coord[0][1],
-                    coord[2][2] - coord[0][2] };
-  int32_t vz[3] = { coord[3][0], coord[3][1], coord[3][2] };
-
-  int32_t rowp0[3]; // Leftmost point of image plane for current row
-
-  // OPTIMIZATION OPPORTUNITY: some texture modes add a fixed offset to a
-  // pixels X/Y/Z coordinates (e.g. to translate ±32K coords to 0-64K).
-  // In certain situations those offsets could be added once here to
-  // coord[0], eliminating some per-pixel math.
+  // Rotation matrix (Z,Y,X)
+  // OK for these to exceed ±32K because interim result is 32-bit.
+  int32_t r[3][3] = {
+    { int32_t(c[2] * c[1] * 65536),
+      int32_t((c[2] * s[1] * s[0] - s[2] * c[0]) * 65536),
+      int32_t((c[2] * s[1] * c[0] + s[2] * s[0]) * 65536) },
+    { int32_t(s[2] * c[1] * 65536),
+      int32_t((s[2] * s[1] * s[0] + c[2] * c[0]) * 65536),
+      int32_t((s[2] * s[1] * c[0] - c[2] * s[0]) * 65536) },
+    { int32_t(-s[1] * 65536),
+      int32_t(c[1] * s[0] * 65536),
+      int32_t(c[1] * c[0] * 65536) } };
 
   for (uint16_t y=0; y<DIAMETER; y++) { // For each row...
     uint16_t *ptr = display.getBuffer() + y * display.width() +
                     (display.width() - DIAMETER) / 2; // -> column 1 in rect
-    uint16_t *hptr;                                   // -> to height table
+    int16_t *zptr;                                    // -> to pixel_z table
     uint16_t x;                                       // Current column
+    int16_t yy = -pixel_xy[y];
+    // OPTIMIZATION OPPORTUNITY: some texture modes add a fixed offset to a
+    // pixels X/Y/Z coordinates (e.g. to translate ±32K coords to 0-64K).
+    // In certain situations those offsets could be added once here to
+    // coord[0], eliminating some per-pixel math.
+    int32_t yy01 = r[0][1] * yy;
+    int32_t yy11 = r[1][1] * yy;
+    int32_t yy21 = r[2][1] * yy;
 
-    // Height table covers half of sphere; lower half is mirrored. If space
+    // Z table covers half of sphere; lower half is mirrored. If space
     // is precious, could use a 1/4 sphere table (with adjustments to the
     // table-generating code, and by adding mirroring in the X loops), at the
     // expense of some extra cycles. The height table is a sparse array, so
     // a lookup is needed to find row start. From there it just increments.
     if (y < RADIUS) {
-      x    = x1[y];                      // First column for row
-      hptr = &height_ram[height_idx[y]]; // First height for row
+      x    = pixel_z_x1[y];                // First column for row
+      zptr = &pixel_z_ram[pixel_z_idx[y]]; // First Z for row
     } else {
-      x    = x1[DIAMETER - 1 - y];
-      hptr = &height_ram[height_idx[DIAMETER - 1 - y]];
+      x    = pixel_z_x1[DIAMETER - 1 - y];
+      zptr = &pixel_z_ram[pixel_z_idx[DIAMETER - 1 - y]];
     }
     ptr += x; // Increment to sphere's first pixel for this row
     uint16_t x2 = DIAMETER - 1 - x; // Last column
-
-    // Get position of leftmost "point 0"  for this row, based on rotated
-    // upper-left corner of image plane, offset by y vector scaled.
-    rowp0[0] = coord[0][0] + vy[0] * vecscale_ram[y] / 65536; // See notes, do
-    rowp0[1] = coord[0][1] + vy[1] * vecscale_ram[y] / 65536; // not "optimize"
-    rowp0[2] = coord[0][2] + vy[2] * vecscale_ram[y] / 65536; // with a >>
 
     // HERE'S WHERE THE CODE DIVERGES for different texturing methods.
     // ONE of these sections should be un-commented at any time.
@@ -193,13 +133,12 @@ void __not_in_flash_func(loop)() {
     // lowest frame rate. With additional code (not present here) and ample RAM
     // (also not present), this could allow dynamic loading of textures.
     for (; x<=x2; x++) { // For each column...
-      uint16_t z = *hptr++;
-      // Get pixel's XYZ coordinates on sphere surface
-      int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
-      int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
-      int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
-      px /= 1 << (ARCTAN_BITS - 1);  // Scale ±32K to arctan table size
-      py /= 1 << (ARCTAN_BITS - 1);  // "
+      int16_t xx = pixel_xy[x];
+      int16_t zz = *zptr++;
+      // Rotate XYZ on axis-aligned sphere to texture space, scale to ±32K
+      int16_t px = (r[0][0] * xx + yy01 + r[0][2] * zz) / (65536 << (ARCTAN_BITS - 1));
+      int16_t py = (r[1][0] * xx + yy11 + r[1][2] * zz) / (65536 << (ARCTAN_BITS - 1));
+      int16_t pz = (r[2][0] * xx + yy21 + r[2][2] * zz) / 65536;
       uint32_t tx; // Texture X coord
       // OPTIMIZATION OPPORTUNITY: these tests and some math could be
       // eliminated using a full-circle rather than single-quadrant arctan
@@ -230,10 +169,11 @@ void __not_in_flash_func(loop)() {
     // front and back (mirrored). Interesting bit here is that math for only
     // two axes is needed, saving some cycles, yet curvature still happens.
     for (; x<=x2; x++) { // For each column...
-      uint16_t z = *hptr++;
-      // Get pixel's XY coordinates on sphere surface
-      int16_t px = rowp0[0] + ((vx[0] * vecscale_ram[x]) + (vz[0] * z)) / 65536;
-      int16_t py = rowp0[1] + ((vx[1] * vecscale_ram[x]) + (vz[1] * z)) / 65536;
+      int16_t xx = pixel_xy[x];
+      int16_t zz = *zptr++;
+      // Rotate XY on axis-aligned sphere to texture space, scale to ±32K
+      int16_t px = (r[0][0] * xx + yy01 + r[0][2] * zz) / 65536;
+      int16_t py = (r[1][0] * xx + yy11 + r[1][2] * zz) / 65536;
       // OPTIMIZATION OPPORTUNITY: if texture dimensions are limited to
       // powers of two, tx,ty could be done with simpler shift-right ops.
       uint16_t tx = TEXTURE_STENCIL_WIDTH * (px + 32768UL) / 65536;
@@ -246,10 +186,11 @@ void __not_in_flash_func(loop)() {
     // Single-axis mapping. May or may not be useful for anything, but shows
     // how even less vector math is needed. Still curved!
     for (; x<=x2; x++) { // For each column...
-      uint16_t z = *hptr++;
-      // Get pixel's Z coordinate on sphere surface
-      int16_t pz = rowp0[2] + ((vx[2] * vecscale_ram[x]) + (vz[2] * z)) / 65536;
-      *ptr++ = pz & 0x1000 ? 0xF800 : 0x001F; // Z axis stripes
+      int16_t xx = pixel_xy[x];
+      int16_t zz = *zptr++;
+      // Rotate Z on axis-aligned sphere to texture space, scale to ±32K
+      int16_t pz = (r[2][0] * xx + yy21 + r[2][2] * zz) / 65536;
+      *ptr++ = pz & 0x1000 ? 0xFFE0 : 0x2965; // Z axis stripes
       // Stripes are uniformly Z-spaced. If uniform polar spacing is
       // desired, incorporate arcsin usage as in first example.
     }
@@ -264,6 +205,7 @@ void __not_in_flash_func(loop)() {
     canvas.fillScreen(0);
     canvas.setCursor(0, 0);
     canvas.printf("%d FPS", fps);
-    display.drawBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height(), 0xFFFF, 0);
+    display.drawBitmap(0, 0, canvas.getBuffer(),
+                       canvas.width(), canvas.height(), 0xFFFF, 0);
   }
 }
