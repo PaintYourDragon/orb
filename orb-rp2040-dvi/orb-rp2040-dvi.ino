@@ -187,8 +187,8 @@ void __not_in_flash_func(loop)() {
 #endif
 
 #if 0
-    // Single-axis mapping. May or may not be useful for anything, but shows
-    // how even less vector math is needed. Still curved!
+    // Single-axis mapping. May or may not be useful for anything,
+    // but shows how even less math is needed. Still curved!
     for (; x<=x2; x++) { // For each column...
       int16_t xx = pixel_xy[x];
       int16_t zz = *zptr++;
