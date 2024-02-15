@@ -135,7 +135,11 @@ void __not_in_flash_func(loop)() {
     for (; x<=x2; x++) { // For each column...
       int16_t xx = pixel_xy[x];
       int16_t zz = *zptr++;
-      // Rotate XYZ on axis-aligned sphere to texture space, scale to ±32K
+      // Rotate XYZ on axis-aligned sphere to texture space, scale to ±32K.
+      // IMPORTANT: do NOT "optimize" these divides to right-shifts. Divides
+      // are necessary because result is signed. Since divisor is a power of
+      // two, compiler will Do The Right Thing with a single-cycle arithmetic
+      // shift rather than a costly divide. Normal >> would lose sign.
       int16_t px = (r[0][0] * xx + yy01 + r[0][2] * zz) / (65536 << (ARCTAN_BITS - 1));
       int16_t py = (r[1][0] * xx + yy11 + r[1][2] * zz) / (65536 << (ARCTAN_BITS - 1));
       int16_t pz = (r[2][0] * xx + yy21 + r[2][2] * zz) / 65536;
