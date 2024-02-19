@@ -20,5 +20,8 @@ for y in range(size[1]):
     for x in range(size[0]):
         rgb = tex[x, y]
         c = ((rgb[0] & 0xF8) << 8) | ((rgb[1] & 0xFC) << 3) | (rgb[2] >> 3)
+        # If target is a color LCD rather than PicoDVI,
+        # enable this next line to swap bytes on output:
+        # c = ((c & 0xFF) << 8) | (c >> 8)
         print("0x{:04x},".format(c), end="")
 print("};")

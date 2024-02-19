@@ -104,7 +104,7 @@ void __not_in_flash_func(loop)() {
     // OPTIMIZATION OPPORTUNITY: some texture modes add a fixed offset to a
     // pixels X/Y/Z coordinates (e.g. to translate ±32K coords to 0-64K).
     // In certain situations those offsets could be added once here to
-    // coord[0], eliminating some per-pixel math.
+    // yy01-21, eliminating some per-pixel math.
     int32_t yy01 = r[0][1] * yy;
     int32_t yy11 = r[1][1] * yy;
     int32_t yy21 = r[2][1] * yy;
@@ -130,8 +130,8 @@ void __not_in_flash_func(loop)() {
 #if 1
     // Polar mapping with arbitrary texture scale. Probably the most intuitive
     // of the mapping modes presented here, but also most demanding, thus
-    // lowest frame rate. With additional code (not present here) and ample RAM
-    // (also not present), this could allow dynamic loading of textures.
+    // lowest frame rate. With additional code (not present here) and ample
+    // RAM (also not present), this could allow dynamic loading of textures.
     for (; x<=x2; x++) { // For each column...
       int16_t xx = pixel_xy[x];
       int16_t zz = *zptr++;
@@ -140,8 +140,10 @@ void __not_in_flash_func(loop)() {
       // are necessary because result is signed. Since divisor is a power of
       // two, compiler will Do The Right Thing with a single-cycle arithmetic
       // shift rather than a costly divide. Normal >> would lose sign.
-      int16_t px = (r[0][0] * xx + yy01 + r[0][2] * zz) / (65536 << (ARCTAN_BITS - 1));
-      int16_t py = (r[1][0] * xx + yy11 + r[1][2] * zz) / (65536 << (ARCTAN_BITS - 1));
+      int16_t px = (r[0][0] * xx + yy01 + r[0][2] * zz) /
+                   (65536 << (ARCTAN_BITS - 1));
+      int16_t py = (r[1][0] * xx + yy11 + r[1][2] * zz) /
+                   (65536 << (ARCTAN_BITS - 1));
       int16_t pz = (r[2][0] * xx + yy21 + r[2][2] * zz) / 65536;
       uint32_t tx; // Texture X coord
       // OPTIMIZATION OPPORTUNITY: these tests and some math could be
@@ -163,7 +165,7 @@ void __not_in_flash_func(loop)() {
       // coordinates. This would lose the flexibility of arbitrary texture
       // sizes (e.g. if implementing runtime texture loading), and in some
       // cases (if using single-quadrant table) would require the texture
-      // width be a multiple of 4.
+      // width be a multiple of 4. Up to you.
       *ptr++ = texture_polar[ty][tx];
     }
 #endif
