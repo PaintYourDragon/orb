@@ -34,5 +34,8 @@ print("};")
 print("\n#define PIXEL_Z_TABLE_SIZE", height_entries)
 print("\nconst uint16_t pixel_z_x1[RADIUS] = ")
 print(str(x1).replace("[","{").replace("]","};"))
-print("\nconst uint16_t pixel_z_idx[RADIUS] = ")
+if height_entries > 65535:
+    print("\nconst uint32_t pixel_z_idx[RADIUS] = ")
+else:
+    print("\nconst uint16_t pixel_z_idx[RADIUS] = ")
 print(str(idx).replace("[","{").replace("]","};"))
