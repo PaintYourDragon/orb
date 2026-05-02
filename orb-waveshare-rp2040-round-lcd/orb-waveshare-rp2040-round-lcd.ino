@@ -24,14 +24,15 @@ MIT license, all text here must be included in any redistribution.
 #define RADIUS   120
 #define DIAMETER (RADIUS * 2) // Sphere width/height on screen
 
-#include "pixel_xy.h"        // Pixel cols/rows to XY fixed-point space
-#include "pixel_z.h"         // Pixel cols/rows to Z space
-#include "arctan.h"          // For rectangular to polar conversion
-#include "arcsin.h"          // "
-#include "texture-polar.h"   // Texture map for polar mapping example
+#include "pixel_xy.h"         // Pixel cols/rows to XY fixed-point space
+#include "pixel_z.h"          // Pixel cols/rows to Z space
+#include "arctan.h"           // For rectangular to polar conversion
+#include "arcsin.h"           // "
+#include "texture-polar.h"    // Texture map for polar mapping example
 int16_t  pixel_xy_ram[DIAMETER];
 int16_t  pixel_z_ram[PIXEL_Z_TABLE_SIZE];
 uint16_t arcsin_ram[1 << ARCSIN_BITS];
+uint16_t arctan_ram[1 << ARCTAN_BITS][1 << ARCTAN_BITS];
 
 #define TFT_DC    8
 #define TFT_CS    9
@@ -40,7 +41,7 @@ uint16_t arcsin_ram[1 << ARCSIN_BITS];
 #define TFT_RST  12
 #define TFT_BL   25
 
-Adafruit_GC9A01A tft(&SPI1, TFT_DC, TFT_CS, TFT_RST);
+Adafruit_GC9A01A tft(&SPI1, TFT_DC, TFT_CS, TFT_RST, SPI_MODE3); // Remove last arg if compilation fails; needs latest lib
 
 uint8_t  dma_channel;
 uint16_t buf[2][240]; // 2 scanlines; one sends while next is rendered
@@ -55,7 +56,7 @@ void setup() {
   SPI1.setSCK(TFT_SCK);
   SPI1.setCS(TFT_CS);
 
-  tft.begin(64000000);
+  tft.begin(62500000);
   tft.fillScreen(GC9A01A_BLACK);
 
   dma_channel = dma_claim_unused_channel(true);
@@ -71,6 +72,7 @@ void setup() {
   memcpy(pixel_xy_ram, pixel_xy, sizeof pixel_xy);
   memcpy(pixel_z_ram , pixel_z , sizeof pixel_z);
   memcpy(arcsin_ram  , arcsin  , sizeof arcsin);
+  memcpy(arctan_ram  , arctan  , sizeof arctan);
 
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, HIGH); // Backlight on
@@ -131,18 +133,18 @@ void __not_in_flash_func(loop)() {
 
     // Only the polar mapping demo is done here.
     for (; x<=x2; x++) { // For each column...
-      int16_t xx = pixel_xy[x];
+      int16_t xx = pixel_xy_ram[x];
       int16_t zz = *zptr++;
       int16_t px = (r[0][0] * xx + yy01 + r[0][2] * zz) / (65536 << (ARCTAN_BITS - 1));
       int16_t py = (r[1][0] * xx + yy11 + r[1][2] * zz) / (65536 << (ARCTAN_BITS - 1));
       int16_t pz = (r[2][0] * xx + yy21 + r[2][2] * zz) / 65536;
       uint32_t tx; // Texture X coord
       if (py >= 0) {
-        tx = (px >= 0) ? arctan[255 - px][255 - py] :         // Quadrant 1
-                         arctan[255 - py][255 + px] + 16384;  // Q2
+        tx = (px >= 0) ? arctan_ram[255 - px][255 - py] :         // Quadrant 1
+                         arctan_ram[255 - py][255 + px] + 16384;  // Q2
       } else {
-        tx = (px < 0) ?  arctan[255 + px][255 + py] + 32768 : // Q3
-                         arctan[255 + py][255 - px] + 49152;  // Q4
+        tx = (px < 0) ?  arctan_ram[255 + px][255 + py] + 32768 : // Q3
+                         arctan_ram[255 + py][255 - px] + 49152;  // Q4
       }
       tx = tx * TEXTURE_POLAR_WIDTH / 65536;
       uint16_t ty = arcsin_ram[(pz + 32768UL) >> (16 - ARCSIN_BITS)] *
@@ -150,12 +152,10 @@ void __not_in_flash_func(loop)() {
       *ptr++ = texture_polar[ty][tx];
     }
 
-    while(dma_channel_is_busy(dma_channel));
+    dma_channel_wait_for_finish_blocking(dma_channel);
+
     // Reset DMA source address and trigger next transfer.
-    // Small delay is needed else last byte out is corrupted.
-    // This happened in NeoPXL8 as well!
-    delayMicroseconds(10);
-    dma_channel_set_read_addr(dma_channel, buf[bufidx], true); // triggers DMA
+    dma_channel_set_read_addr(dma_channel, buf[bufidx], true); // Triggers DMA
     bufidx = 1 - bufidx; // Swap scanline buffers
   }
   Serial.println(++frames * 1000 / millis());
